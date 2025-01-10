@@ -15,7 +15,7 @@ def login():
         # Check if the username and password are correct
         if username == 'ArYan.x3' and password == '784623':
             # Redirect to the specified link if login is successful
-            return redirect('https://aryan-whatsapp.onrender.com/')
+            return redirect('https://aryan-wp.onrender.com/')
         else:
             error = 'Invalid username or password. Please try again.'
 
