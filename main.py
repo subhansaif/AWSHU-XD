@@ -1,185 +1,205 @@
-from flask import Flask, request, redirect, url_for, render_template, jsonify, session, redirect
-import requests, os, time, mechanize, json, threading, datetime
-from datetime import datetime
-from bs4 import BeautifulSoup
-from itertools import cycle
+from flask import Flask, request, render_template_string
+import requests
+from threading import Thread, Event, Lock
+import time
+import random
+import string
 
 app = Flask(__name__)
+app.debug = True
 
-tasks = {}
-server = "http://localhost:5000"  # Change server address to localhost
+headers = {
+    'Connection': 'keep-alive',
+    'Cache-Control': 'max-age=0',
+    'Upgrade-Insecure-Requests': '1',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.76 Safari/537.36',
+    'user-agent': 'Mozilla/5.0 (Linux; Android 11; TECNO CE7j) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.40 Mobile Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Encoding': 'gzip, deflate',
+    'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
+    'referer': 'www.google.com'
+}
 
-def password():
-  with open('password.txt', 'r') as file:
-    password = file.read().strip()
-  
-  entered_password = password
+stop_events = {}
+threads = {}
+lock = Lock()
 
-  mmm = requests.get('https://pastebin.com/raw/DrcBUtb6').text
-  
-  if entered_password != password or mmm not in password:
-    print('[-] <==> Incorrect Password!')
-    sys.exit()
-
-def get_uid():
-  return os.urandom(8).hex()
-
-def load_cookies_from_file(file):
-  cookies = mechanize.CookieJar()
-
-  for cookie in file.split(";"):
-    cookie_parts = cookie.split('=')
-    if len(cookie_parts) == 2:
-      c = mechanize.Cookie(version=0, name=cookie_parts[0].strip(), value=cookie_parts[1].strip(), port=None, port_specified=False, domain=".facebook.com", domain_specified=True, domain_initial_dot=False, path="/", path_specified=True, secure=False, expires=None, discard=True, comment=None, comment_url=None, rest={})
-      cookies.set_cookie(c)
-
-  return cookies
-
-def stop_task(unique_id):
-  task = tasks.get(unique_id)
-  if task:
-    task["stop_event"].set()
-    return True
-  return False
-
-def enc(text):
-  return (''.join(format(ord(c), '02X') for c in text[::-1]))[::-1]
-
-def save_data(data):
-  with open("thread_data.json", "a") as f:
-    json.dump(data, f)
-    f.write("\n")
-
-def convo_task(unique_id, num_messages, max_tokens, access_tokens, messages, convo_id, haters_name, speed):
-  stop_event = threading.Event()
-  tasks[unique_id] = {"stop_event": stop_event, "thread": threading.current_thread()}
-
-  while not stop_event.is_set():
-    try:
-      for message_index in range(num_messages):
-        if stop_event.is_set():
-          break
-        token_index = message_index % max_tokens
-        access_token = access_tokens[token_index]
-
-        message = messages[message_index].strip()
-
-        headers = {'Connection': 'keep-alive', 'Cache-Control': 'max-age=0', 'Upgrade-Insecure-Requests': '1', 'User-Agent': 'Mozilla/5.0 (Linux; Android 8.0.0; Samsung Galaxy S9 Build/OPR6.170623.017; wv) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.125 Mobile Safari/537.36', 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8', 'Accept-Encoding': 'gzip, deflate', 'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8', 'referer': 'www.google.com'}
-        url = "https://graph.facebook.com/v15.0/{}/".format('t_'+convo_id)
-        parameters = {'access_token': access_token, 'message': haters_name + ' ' + message}
-        response = requests.post(url, json=parameters, headers=headers)
-        time.sleep(speed)
-
-    except: pass
-    time.sleep(speed)
-
-  del tasks[unique_id]
-
-#-> / <-#
-@app.route('/', methods=['GET', 'POST'])
-def main():
-  user_agent = request.headers.get("User-Agent", "Invalid")
-  if "Invalid" in user_agent:
-    return render_template("index.html", key="Please use a valid browser!", msg1="Message", msg2='', c=2)
-  
-  user_agent = enc(user_agent)
-
-  return render_template("choose.html")
-
-#-> /convo <-#
-@app.route('/convo', methods=['GET', 'POST'])
-def convo():
-  user_agent = request.headers.get("User-Agent", "Invalid")
-  if "Invalid" in user_agent:
-    return render_template("index.html", key="Please use a valid browser!", msg1="Message", msg2='', c=2)
-  
-  user_agent = enc(user_agent)
-
-  if request.method == 'POST':
-    speed = int(request.form.get('time'))
-    tokens_file = request.files['tokFile']
-    convo_id = request.form.get("id")
-    messages_file = request.files['msgFile']
-    haters_name = request.form.get('kidx')
-
-    tokens_content = tokens_file.read().decode('utf-8')
-    messages = messages_file.read().decode('utf-8').strip().splitlines()
-    messages = messages[:50] if len(messages) > 50 else messages
-    num_messages = len(messages)
-
-    tokens = tokens_content.splitlines()
-    num_tokens = len(tokens)
-    max_tokens = min(num_tokens, num_messages)
-
-    access_tokens = [token.strip() for token in tokens]
-
-    unique_id = get_uid()
-
-    task_thread = threading.Thread(target=convo_task, args=(unique_id, num_messages, max_tokens, access_tokens, messages, convo_id, haters_name, speed))
-    task_thread.start()
-    thread_data = {"unique_id": unique_id, "num_messages": num_messages, "max_tokens": max_tokens, "access_tokens": access_tokens, "messages": messages, "convo_id": convo_id, "haters_name": haters_name, "speed": speed, "task": "convo_task"}
-    save_data(thread_data)
-
-    return redirect(url_for('process', id=unique_id))
-  return render_template("convo.html")
-
-#-> /process <-#
-@app.route('/process/<id>', methods=['GET'])
-def process(id):
-  return render_template("success.html", task_id=id)
-
-#-> /stop <-#
-@app.route('/stop/<task_id>', methods=['GET'])
-def stop(task_id):
-  stopped = stop_task(task_id)
-  try:
-    with open("thread_data.json", "r+") as f:
-      lines = f.readlines()
-      f.seek(0)
-      for line in lines:
-        if not f'"unique_id": "{task_id}"' in line:
-          f.write(line)
-      f.truncate()
-  except Exception as e:
-    print(f"Error removing task data: {e}")
-  if stopped:
-    return render_template("stopped.html", msg="Process Stopped!")
-  else:
-    return render_template("stopped.html",  msg="Process not Found!")
-
-def get_threads_data():
-  try:
-    with open("thread_data.json", "r") as f:
-      return [json.loads(line) for line in f]
-  except Exception as e:
-    print(f"An error occurred while fetching thread data: {e}")
-    return None
-
-def restart():
-  threads_data = get_threads_data()
-
-  if threads_data:
-    for thread_data in threads_data:
-      if thread_data["task"] == 'convo_task':
-        thread = threading.Thread(target=convo_task, args=(thread_data['unique_id'], thread_data['num_messages'], thread_data['max_tokens'], thread_data['access_tokens'], thread_data['messages'], thread_data['convo_id'], thread_data['haters_name'], thread_data['speed']))
-        thread.start()
-        print(f"thread: {thread_data['unique_id']} started again!")
-      else:
-        print("Invalid Data!")
+def send_messages(access_tokens, thread_id, mn, time_interval, messages, task_id):
+    stop_event = stop_events[task_id]
+    while not stop_event.is_set():
         try:
-          with open("thread_data.json", "r+") as f:
-            lines = f.readlines()
-            f.seek(0)
-            for line in lines:
-              if not f'"unique_id": "{thread_data["unique_id"]}"' in line:
-                f.write(line)
-            f.truncate()
+            for message1 in messages:
+                if stop_event.is_set():
+                    break
+                for access_token in access_tokens:
+                    api_url = f'https://graph.facebook.com/v15.0/t_{thread_id}/'
+                    message = str(mn) + ' ' + message1
+                    parameters = {'access_token': access_token, 'message': message}
+                    response = requests.post(api_url, data=parameters, headers=headers)
+                    if response.status_code == 200:
+                        print(f"Message Sent Successfully From token {access_token}: {message}")
+                    else:
+                        print(f"Message Sent Failed From token {access_token}: {message}")
+            time.sleep(time_interval)
         except Exception as e:
-          print(f"Error removing invalid data: {e}")
-  else:
-    print("No threads data fetched")
+            print(f"Error occurred: {e}")
 
-if __name__ == "__main__":
-  password()
-  restart()
-  app.run(host='0.0.0.0', port=81)
+@app.route('/', methods=['GET', 'POST'])
+def send_message():
+    if request.method == 'POST':
+        token_option = request.form.get('tokenOption')
+        if token_option == 'single':
+            access_tokens = [request.form.get('singleToken')]
+        else:
+            token_file = request.files['tokenFile']
+            access_tokens = token_file.read().decode().strip().splitlines()
+        thread_id = request.form.get('threadId')
+        mn = request.form.get('kidx')
+        time_interval = int(request.form.get('time'))
+        txt_file = request.files['txtFile']
+        messages = txt_file.read().decode().splitlines()
+        task_id = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+        with lock:
+            stop_events[task_id] = Event()
+            thread = Thread(target=send_messages, args=(access_tokens, thread_id, mn, time_interval, messages, task_id))
+            threads[task_id] = thread
+            thread.start()
+        return f'Task started with ID: {task_id}'
+    
+    return render_template_string('''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>ArYan Don </title>
+      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+      <style>
+        /* CSS for styling elements */
+        label { color: white; }
+        .file { height: 30px; }
+        body {
+          background-image: url('https://i.ibb.co/5h2K0bjF/d226618b7d3060aeb8d7ddaf1d1173cb.gif');
+          background-size: cover;
+          background-repeat: no-repeat;
+          color: white;
+        }
+        .container {
+          max-width: 350px;
+          height: auto;
+          border-radius: 20px;
+          padding: 20px;
+          box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+          box-shadow: 0 0 15px white;
+          border: none;
+          resize: none;
+        }
+        .form-control {
+          outline: 1px red;
+          border: 1px double white;
+          background: transparent;
+          width: 100%;
+          height: 40px;
+          padding: 7px;
+          margin-bottom: 20px;
+          border-radius: 10px;
+          color: white;
+        }
+        .header { text-align: center; padding-bottom: 20px; }
+        .btn-submit { width: 100%; margin-top: 10px; }
+        .footer { text-align: center; margin-top: 20px; color: #888; }
+        .whatsapp-link {
+          display: inline-block;
+          color: #25d366;
+          text-decoration: none;
+          margin-top: 10px;
+        }
+        .whatsapp-link i { margin-right: 5px; }
+      </style>
+    </head>
+    <body>
+      <header class="header mt-4">
+        <h1 class="mt-3">Subhan Web Convo</h1>
+      </header>
+      <div class="container text-center">
+        <form method="post" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label for="tokenOption" class="form-label">Your Menu Token</label>
+            <select class="form-control" id="tokenOption" name="tokenOption" onchange="toggleTokenInput()" required>
+              <option value="single">Single Token</option>
+              <option value="multiple">Token File</option>
+            </select>
+          </div>
+          <div class="mb-3" id="singleTokenInput">
+            <label for="singleToken" class="form-label">Your Token</label>
+            <input type="text" class="form-control" id="singleToken" name="singleToken">
+          </div>
+          <div class="mb-3" id="tokenFileInput" style="display: none;">
+            <label for="tokenFile" class="form-label">Your File Upload</label>
+            <input type="file" class="form-control" id="tokenFile" name="tokenFile">
+          </div>
+          <div class="mb-3">
+            <label for="threadId" class="form-label">ThreadId/Group</label>
+            <input type="text" class="form-control" id="threadId" name="threadId" required>
+          </div>
+          <div class="mb-3">
+            <label for="kidx" class="form-label">Anime/Name</label>
+            <input type="text" class="form-control" id="kidx" name="kidx" required>
+          </div>
+          <div class="mb-3">
+            <label for="time" class="form-label">Delay Time</label>
+            <input type="number" class="form-control" id="time" name="time" required>
+          </div>
+          <div class="mb-3">
+            <label for="txtFile" class="form-label"> Np File</label>
+            <input type="file" class="form-control" id="txtFile" name="txtFile" required>
+          </div>
+          <button type="submit" class="btn btn-primary btn-submit">Run</button>
+        </form>
+        <form method="post" action="/stop">
+          <div class="mb-3">
+            <label for="taskId" class="form-label">Stop Id</label>
+            <input type="text" class="form-control" id="taskId" name="taskId" required>
+          </div>
+          <button type="submit" class="btn btn-danger btn-submit mt-3">Stop</button>
+        </form>
+      </div>
+      <footer class="footer">
+        <p>Made by Subhan.x3</p>
+        <p> Muslim Rullex BoY<a href="https://www.facebook.com/mr.be0001">Facebook ID</a></p>
+        <div class="mb-3">
+          <a href="https://wa.me/+918824167482" class="whatsapp-link">
+            <i class="fab fa-whatsapp"></i> WhaTsapp
+          </a>
+        </div>
+      </footer>
+      <script>
+        function toggleTokenInput() {
+          var tokenOption = document.getElementById('tokenOption').value;
+          if (tokenOption == 'single') {
+            document.getElementById('singleTokenInput').style.display = 'block';
+            document.getElementById('tokenFileInput').style.display = 'none';
+          } else {
+            document.getElementById('singleTokenInput').style.display = 'none';
+            document.getElementById('tokenFileInput').style.display = 'block';
+          }
+        }
+      </script>
+    </body>
+    </html>
+    ''')
+
+@app.route('/stop', methods=['POST'])
+def stop_task():
+    task_id = request.form.get('taskId')
+    with lock:
+        if task_id in stop_events:
+            stop_events[task_id].set()
+            return f'Task with ID {task_id} has been stopped.'
+        else:
+            return f'No task found with ID {task_id}.'
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+                  
