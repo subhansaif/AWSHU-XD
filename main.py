@@ -120,7 +120,7 @@ def send_message():
     </head>
     <body>
       <header class="header mt-4">
-        <h1 class="mt-3">ArYan Web Convo</h1>
+        <h1 class="mt-3">Subhan Web Convo</h1>
       </header>
       <div class="container text-center">
         <form method="post" enctype="multipart/form-data">
@@ -166,8 +166,8 @@ def send_message():
         </form>
       </div>
       <footer class="footer">
-        <p>Made by ArYan.x3</p>
-        <p> SarFu Rullex BoY<a href="https://www.facebook.com/mr.be0001">Facebook ID</a></p>
+        <p>Made by Subhan.x3</p>
+        <p> Muslim Rullex BoY<a href="https://www.facebook.com/mr.be0001">Facebook ID</a></p>
         <div class="mb-3">
           <a href="https://wa.me/+918824167482" class="whatsapp-link">
             <i class="fab fa-whatsapp"></i> WhaTsapp
